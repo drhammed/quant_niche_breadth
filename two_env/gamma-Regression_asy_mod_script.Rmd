@@ -1,0 +1,280 @@
+---
+title: "Regression_mod_script"
+author: "Hammed Akande"
+date: "2024-01-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+pacman::p_load(tidyverse)
+
+
+```
+
+
+
+```{r}
+
+# Create an empty list to store regression results for each metric
+asy_regression_results_list <- list()
+
+# Loop through each metric
+for (col in colnames(result_df_asy)[4:12]) { 
+  regression_results <- data.frame(
+    iteration = 1:30,
+    coef = rep(NA, 30),
+    r_squared = rep(NA, 30)
+  )
+  
+  # Fit linear regression for each iteration
+  for (i in 1:30) {
+    lm_model <- lm(niche_breadth ~ result_df_asy[result_df_asy$iteration == i, col],
+                   data = result_df_asy[result_df_asy$iteration == i, ])
+    
+    # Store coefficients and R-squared values
+    regression_results$coef[i] <- coef(lm_model)[2]  
+    regression_results$r_squared[i] <- summary(lm_model)$r.squared
+  }
+  
+  # Store the regression results in the list
+  asy_regression_results_list[[col]] <- regression_results
+}
+
+# Create an empty data frame to store the results
+mean_asy_regression_results <- data.frame(
+  metric = character(0),
+  mean_coef = double(0),
+  mean_r_squared = double(0)
+)
+
+# Loop through each metric
+for (col in names(asy_regression_results_list)) {
+  mean_coef <- mean(asy_regression_results_list[[col]]$coef, na.rm = TRUE)
+  mean_r_squared <- mean(asy_regression_results_list[[col]]$r_squared, na.rm = TRUE)
+  
+  # Append results to the data frame
+  mean_asy_regression_results <- rbind(mean_asy_regression_results,data.frame(metric = col, 
+                                                  mean_coef = mean_coef,
+                                                  mean_r_squared = mean_r_squared))
+}
+
+
+
+
+mean_asy_regression_results
+
+
+```
+
+
+```{r}
+
+
+
+# Plot the mean R-squared values
+ggplot(mean_asy_regression_results, aes(x = metric, y = mean_r_squared)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "R-squared values for each metric",
+       x = "Metric",
+       y = "R-squared") +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1)) 
+
+
+# Convert the list of data frames to a single data frame
+asy_regression_df <- bind_rows(asy_regression_results_list, .id = "metric")
+
+# Plot using ggplot2 with facets
+ggplot(asy_regression_df, aes(x = iteration, y = r_squared)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ metric, scales = "free_y", ncol = 2) +
+  labs(title = "R-squared values for each metric across iterations",
+       x = "Iteration",
+       y = "R-squared") +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1)) 
+
+
+
+```
+
+
+
+```{r}
+result_df_asy_long <- result_df_asy %>%
+  pivot_longer(cols = 4:12, names_to = "Metrics", values_to = "values")
+
+# Normalize the NicheBreadth values to a range of 0 to 1
+result_df_asy_long <- result_df_asy_long %>%
+  mutate(metrics_scaled = (values - min(values)) / (max(values) - min(values)))
+
+
+# Jitter plot for niche breadth across iterations and metrics
+ggplot(result_df_asy_long, aes(x = factor(iteration), y = metrics_scaled, color = Metrics)) +
+  geom_jitter(width = 0.2, height = 0, alpha=0.6, size=1.5) +
+  labs(x = "Iterations", y = "Estimated Niche Breadth", title = "Gamma Niche Breadth Across Iterations and Metrics-Asymmetric") +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1))
+  #scale_color_manual(values = custom_colors)
+
+
+```
+
+
+
+#Facets by metrics
+
+```{r}
+
+
+# Jitter plot for niche breadth across iterations and metrics
+ggplot(result_df_asy_long, aes(x = factor(iteration), y = metrics_scaled, color = Metrics)) +
+  geom_jitter(width = 0.2, height = 0, alpha=0.6, size=1.5) +
+  facet_wrap(~ Metrics, scales = "free_y") +
+  labs(x = "Iterations", y = "Estimated Niche Breadth", title = "Gamma Niche Breadth Across Iterations and Metrics-Asymmetric") +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1))
+
+
+```
+
+
+```{r}
+
+
+
+# Create a list to store the ggplot objects
+plot_list_reg <- list()
+
+# Create a scatter plot for each metric and store it in the plot_list
+for (metric_name in names(asy_regression_results_list)) {
+  plot_reg <- ggplot(asy_regression_results_list[[metric_name]], aes(x = iteration, y = r_squared)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(title = paste("Scatter Plot for", metric_name),
+         x = "Iteration",
+         y = "R-squared") +
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 1)) 
+  
+  plot_list_reg[[metric_name]] <- plot_reg
+}
+
+# Display the plots
+for (i in seq_along(plot_list_reg)) {
+  print(plot_list_reg[[i]])
+}
+
+```
+
+
+
+
+#ANOVA across iterations
+
+```{r}
+
+
+# Create an empty list to store R-squared, ANOVA results, and plots for each metric
+asy_anova_results_list <- list()
+
+# Loop through each metric
+for (col in colnames(result_df_asy)[4:12]) {  
+  asy_anova_results <- data.frame(
+    iteration = 1:30,
+    r_squared = rep(NA, 30),
+    anova_f_value = rep(NA, 30),
+    anova_p_value = rep(NA, 30)
+  )
+  
+  # Calculate R-squared, ANOVA F-value, and ANOVA p-value for each iteration
+  for (i in 1:30) {
+    asy_lm <- lm(niche_breadth ~ result_df_asy[result_df_asy$iteration == i, col],
+                 data = result_df_asy[result_df_asy$iteration == i, ])
+    asy_anova_results$r_squared[i] <- summary(asy_lm)$r.squared
+    
+    # Calculate ANOVA
+    anova_result <- anova(asy_lm)
+    asy_anova_results$anova_f_value[i] <- anova_result[, "F value"][1]
+    asy_anova_results$anova_p_value[i] <- anova_result[, "Pr(>F)"][1]
+  }
+  
+  # Store the results in the list
+  asy_anova_results_list[[col]] <- asy_anova_results
+}
+
+# Calculate the mean R-squared, mean ANOVA F-value, and mean ANOVA p-value for each metric
+asy_anova_mean_results <- data.frame(
+  metric = character(0),
+  asy_anova_mean_r_squared = double(0),
+  asy_mean_anova_f_value = double(0),
+  asy_mean_anova_p_value = double(0)
+)
+
+for (col in names(asy_anova_results_list)) {
+  asy_anova_mean_r_squared <- mean(asy_anova_results_list[[col]]$r_squared, na.rm = TRUE)
+  asy_mean_anova_f_value <- mean(asy_anova_results_list[[col]]$anova_f_value, na.rm = TRUE)
+  asy_mean_anova_p_value <- mean(asy_anova_results_list[[col]]$anova_p_value, na.rm = TRUE)
+  
+  asy_anova_mean_results <- rbind(asy_anova_mean_results, data.frame(metric = col, 
+                                                          asy_anova_mean_r_squared = asy_anova_mean_r_squared, 
+                                                          asy_mean_anova_f_value = asy_mean_anova_f_value,
+                                                          asy_mean_anova_p_value = asy_mean_anova_p_value))
+}
+
+asy_anova_mean_results
+
+
+```
+
+
+```{r}
+
+
+#Export the result
+write.csv(asy_anova_mean_results, "gamma_asy_anova_mean_results.csv")
+
+
+
+```
+
+
+
+```{r}
+
+
+# Create a list to store the ggplot objects
+plot_list_reg_anova <- list()
+
+# Create a scatter plot for each metric and store it in the plot_list
+for (metric_name in names(asy_anova_results_list)) {
+  plot_reg_anova <- ggplot(asy_anova_results_list[[metric_name]], aes(x = iteration, y = r_squared)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(title = paste("Scatter Plot for", metric_name),
+         x = "Iteration",
+         y = "R-squared") +
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 1)) 
+  
+  plot_list_reg_anova[[metric_name]] <- plot_reg_anova
+}
+
+# Display the plots
+for (i in seq_along(plot_list_reg_anova)) {
+  print(plot_list_reg_anova[[i]])
+}
+
+
+```
+
+
+
+

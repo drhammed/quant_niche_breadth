@@ -1,0 +1,10 @@
+#ignore the RData
+*.RData
+
+*.csv
+
+*.png
+
+
+#ignore DS Store
+.DS_Store

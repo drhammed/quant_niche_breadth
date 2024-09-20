@@ -1,0 +1,255 @@
+---
+title: "Result_section"
+author: "Hammed Akande"
+date: "2024-01-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+pacman::p_load(tidyverse,gridExtra)
+
+
+```
+
+
+
+```{r}
+
+
+# Data for asymmetric uniform distribution
+asymmetric_uniform <- read.csv("uniform_asy_anova_mean_results.csv")
+asymmetric_uniform <- asymmetric_uniform[, -1]
+#rename the columns
+colnames(asymmetric_uniform) <- c("metric", "r_squared", "f_value", "p_value")
+
+# Data for symmetric uniform distribution
+symmetric_uniform <- read.csv("uniform_sym_anova_mean_results.csv")
+symmetric_uniform <- symmetric_uniform[, -1]
+colnames(symmetric_uniform) <- c("metric", "r_squared", "f_value", "p_value")
+
+
+# Data for asymmetric normal distribution
+asymmetric_normal <- read.csv("normal_asy_anova_mean_results.csv")
+asymmetric_normal <- asymmetric_normal[, -1]
+colnames(asymmetric_normal) <- c("metric", "r_squared", "f_value", "p_value")
+
+# Data for symmetric normal distribution
+symmetric_normal <- read.csv("normal_sym_anova_mean_results.csv")
+symmetric_normal <- symmetric_normal[, -1]
+colnames(symmetric_normal) <- c("metric", "r_squared", "f_value", "p_value")
+
+
+
+#Data for asymmetric gamma distribution
+asymmetric_gamma <- read.csv("gamma_asy_anova_mean_results.csv")
+asymmetric_gamma <- asymmetric_gamma[, -1]
+colnames(asymmetric_gamma) <- c("metric", "r_squared", "f_value", "p_value")
+
+# Data for symmetric gamma distribution
+symmetric_gamma <- read.csv("gamma_sym_anova_mean_results.csv")
+symmetric_gamma <- symmetric_gamma[, -1]
+colnames(symmetric_gamma) <- c("metric", "r_squared", "f_value", "p_value")
+
+
+```
+
+
+
+```{r}
+
+# create bar plots
+create_bar_plot <- function(data, title) {
+  ggplot(data, aes(x = metric, y = r_squared, fill = metric)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(title = title, y = "Mean R-squared") +
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.text.x = element_text(angle = 45, hjust = 1)) +
+     scale_y_continuous(limits = c(0, 1))
+}
+
+# Bar plots for each scenario
+plot_asymmetric_uniform <- create_bar_plot(asymmetric_uniform, "Asymmetric Uniform Distribution")
+plot_symmetric_uniform <- create_bar_plot(symmetric_uniform, "Symmetric Uniform Distribution")
+plot_asymmetric_normal <- create_bar_plot(asymmetric_normal, "Asymmetric Normal Distribution")
+plot_symmetric_normal <- create_bar_plot(symmetric_normal, "Symmetric Normal Distribution")
+plot_asymmetric_gamma <- create_bar_plot(asymmetric_gamma, "Asymmetric Gamma Distribution")
+plot_symmetric_gamma <- create_bar_plot(symmetric_gamma, "Symmetric Gamma Distribution")
+
+```
+
+```{r}
+
+# display plots
+
+(plot_grid <- grid.arrange(plot_symmetric_uniform,plot_symmetric_normal,plot_symmetric_gamma,
+                           plot_asymmetric_uniform,plot_asymmetric_normal,plot_asymmetric_gamma,ncol = 3, nrow = 2))
+
+
+
+```
+
+
+
+```{r}
+
+#save the above plot as img
+ggsave("two_gradients_plot.png", plot_grid, height = 10, width = 10, units = "in", dpi = 300)
+
+
+```
+
+
+Color them by group- co_occurence vs environmental
+
+```{r}
+
+
+create_bar_plot <- function(data, title) {
+  # Classify metrics into groups
+  data$Group <- ifelse(data$metric %in% c("SimpSSI", "beta.a", "beta.w"), 
+                       "Co-occurrence", "Environmental")
+  
+  # Plot with group colors
+  ggplot(data, aes(x = metric, y = r_squared, fill = Group)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    scale_fill_manual(values = c("Co-occurrence" = "#1f77b4", "Environmental" = "#ff7f0e",
+                      name = "", labels = c("Co-occurrence", "Environmental"))) +
+    labs(title = title, y = "Mean R-squared") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    coord_cartesian(ylim = c(0, 1)) +
+    scale_y_continuous(limits = c(0, 1))
+}
+
+
+
+
+
+#Blue and orange colors for the groups
+#"Co-occurrence" = "#1f77b4", "Environmental" = "#ff7f0e"
+
+#Teal and magenta
+#"Co-occurrence" = "#17becf", "Environmental" = "#e377c2"
+
+
+```
+
+
+
+```{r}
+
+
+library(gridExtra)
+
+# Assuming you have your data frames (asymmetric_uniform, symmetric_uniform, etc.) ready
+plot_asymmetric_uniform <- create_bar_plot(asymmetric_uniform, "Asymmetric Uniform Distribution")
+plot_symmetric_uniform <- create_bar_plot(symmetric_uniform, "Symmetric Uniform Distribution")
+plot_asymmetric_normal <- create_bar_plot(asymmetric_normal, "Asymmetric Normal Distribution")
+plot_symmetric_normal <- create_bar_plot(symmetric_normal, "Symmetric Normal Distribution")
+plot_asymmetric_gamma <- create_bar_plot(asymmetric_gamma, "Asymmetric Gamma Distribution")
+plot_symmetric_gamma <- create_bar_plot(symmetric_gamma, "Symmetric Gamma Distribution")
+
+# Arrange and display the plots
+(plot_grid <- grid.arrange(plot_symmetric_uniform,plot_symmetric_normal, plot_symmetric_gamma, 
+                           plot_asymmetric_uniform, plot_asymmetric_normal,
+                           plot_asymmetric_gamma,ncol = 3, nrow = 2))
+
+
+
+```
+
+
+
+```{r}
+
+#save the plot as img
+ggsave("two_gradients_plot2.png", plot_grid, height = 10, width = 10, units = "in", dpi = 300)
+
+#ggsave("multiple_gradients_IALE.png", plot_grid, height = 10, width = 10, units = "in", dpi = 300)
+
+```
+
+
+
+
+
+```{r}
+
+#subset the data to include SimpSSI, beta.a, and beta.w
+
+sym_uniform_sub <- subset(symmetric_uniform, metric %in% c("SimpSSI", "beta.a", "beta.w"))
+asym_uniform_sub <- subset(asymmetric_uniform, metric %in% c("SimpSSI", "beta.a", "beta.w"))
+sym_normal_sub <- subset(symmetric_normal, metric %in% c("SimpSSI", "beta.a", "beta.w"))
+asym_normal_sub <- subset(asymmetric_normal, metric %in% c("SimpSSI", "beta.a", "beta.w"))
+
+# Combine the data from the four dataframes
+combined_data <- rbind(
+  cbind(asym_uniform_sub, dataset = "asym_uniform_sub"),
+  cbind(sym_uniform_sub, dataset = "sym_uniform_sub"),
+  cbind(asym_normal_sub, dataset = "asym_normal_sub"),
+  cbind(sym_normal_sub, dataset = "sym_normal_sub")
+)
+
+# Load the required libraries
+library(ggplot2)
+
+# Plot the line plot
+ggplot(combined_data, aes(x = metric, y = r_squared, color = dataset)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Mean R-squared Trend for SimpSSI, beta.a, and beta.w",
+    x = "Metric",
+    y = "Mean R-squared"
+  ) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 1)) 
+
+ggplot(combined_data, aes(x = metric, y = r_squared, fill = dataset)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7) +
+  labs(
+    title = "Mean R-squared Trend for SimpSSI, beta.a, and beta.w",
+    x = "Metric",
+    y = "Mean R-squared"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top", legend.title = element_blank())
+
+
+
+ggplot(combined_data, aes(x = metric, y = r_squared, color = dataset, group = dataset)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Mean R-squared Trend for SimpSSI, beta.a, and beta.w",
+    x = "Metric",
+    y = "Mean R-squared"
+  ) +
+  theme_minimal()
+
+
+
+ggplot(combined_data, aes(x = dataset, y = r_squared, color = dataset, group = metric)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~metric, scales = "free_y", ncol = 3) +
+  labs(
+    title = "Mean R-squared Trend for SimpSSI, beta.a, and beta.w",
+    x = "Dataset",
+    y = "Mean R-squared"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+
+

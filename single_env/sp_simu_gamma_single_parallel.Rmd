@@ -1,0 +1,584 @@
+---
+title: "sp_simu_uniform_single"
+author: "Hammed Akande"
+date: "2024-01-13"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+
+
+#load all the packages needed to run this script
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(doParallel,foreach,data.table,ade4,tidyverse,cubelyr,tmap,mapview,exactextractr,lubridate,prism,e1071,vegan,dplyr,reshape2,ggpmisc,ggplot2,e1071,corrplot,nicheROVER,hypervolume,ggpubr,mFD,ecoCopula)
+
+
+```
+
+
+
+```{r}
+
+AllNicheBreadthFunctions_Hmd <- source("AllNBFunctions_single.R")
+Symmetric_Gaussian_function <- source("Single_Sym_Gau_gamma_Function.R")
+AsymetricGaussian_functions <- source("Single_Asy_Gau_gamma_Function.R")
+DavidZelenyThetaFunctions <- source("DavidZelenyThetaFunctions.R")
+
+```
+
+
+```{r}
+
+
+
+# number of cores
+num_cores <- 8 #24 cores on lab server, change it accordingly when running on local machine
+
+# register parallel backend
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+# define params
+n.reps <- 30  # do 30 iterations.
+n.species <- 30 #number of species
+n.communities <- 500 #number of sites
+
+
+set.seed(9999)
+
+start <- Sys.time()
+
+# Initialize an empty data frame to store results
+result_df <- data.frame(iteration = integer(0), sci.name = character(0), 
+                        niche_breadth = numeric(0),SimpSSI = numeric(0),
+                        beta.a = numeric(0),beta.w = numeric(0),
+                        omi_result = numeric(0),nicheRover_hyp_m = numeric(0),
+                        hyp_nb_df = numeric(0),
+                        nicheBreadth_Gam = numeric(0),
+                        nicheBreadth_Gam.latents = numeric(0),
+                        nicheBreadth_avg.Dist = numeric(0))
+
+# Parallelize the loop using foreach
+result_df <- foreach(iteration = 1:n.reps, .packages=c("pacman", "ade4"), .export = c("AllNicheBreadthFunctions_Hmd", "Symmetric_Gaussian_function", "AsymetricGaussian_functions", "DavidZelenyThetaFunctions")) %dopar% {
+  
+  # Load required packages
+  pacman::p_load(data.table,ade4,tidyverse,cubelyr,tmap,mapview,exactextractr,lubridate,prism,e1071,ade4,vegan,dplyr,reshape2,ggpmisc,ggplot2,e1071,corrplot,nicheROVER,hypervolume,ggpubr,mFD,ecoCopula)
+
+  # Load custom functions
+   source("AllNBFunctions_single.R")
+   source("Single_Sym_Gau_gamma_Function.R")
+   source("Single_Asy_Gau_gamma_Function.R")
+   source("DavidZelenyThetaFunctions.R")
+  
+  print(paste("Iteration:", iteration))
+  
+  # Generate the community with new niche_breadth values
+  
+    simul.com <- generate_community.Symmetric.Gaussian.multi.x(n.species=30,n.sites=500,n.x=1,
+                                                             shape=0.2,rate=0.5)
+  
+  sim.com <- simul.com$community_abundance_matrix
+  
+  # Transform to presence-absence
+  sim.com[sim.com > 0] <- 1
+  colnames(sim.com) <- paste0("sp", 1:n.species)
+  
+  # Generate niche_breadth values
+  niche.breadth <- simul.com$breadth.Oracle
+  names(niche.breadth) <- paste0("sp", 1:n.species)
+  
+  #Store environmental variables
+  env_vars <- simul.com$x
+  colnames(env_vars) <- "env.1"
+  env_vars <- as.data.frame(env_vars)
+  env.1 <- env_vars$env.1
+  #env.2 <- env_vars$env.2
+  
+  # Calculate omi parameters and om_tol
+  SimpSSI <- co_occur(GOSmat, reps = 100, psample = 4, psample2 = 2)$multi.sim
+  beta.a <- co_occur(GOSmat, reps = 100, psample = 4, psample2 = 2)$Beta.a
+  beta.w <- co_occur(GOSmat, reps = 100, psample = 4, psample2 = 2)$Beta.w
+  omi_result <- omi_params_fun(env_vars = env_vars, 
+                               PA = sim.com)
+  nicheRover_hyp_m <- nr_hypervolume_fun(sim.com, env_vars, nsamples = 10)
+  hyp_nb_df <- hypervolume_blond_fun(sim.com, env_vars)
+  nicheBreadth_Gam <- estimate_nicheBreadth_Gam(sim.com, env_vars)
+  nicheBreadth_Gam.latents <- estimate_nicheBreadth_Latents(sim.com, 
+                                                            env_vars,nlv=5)
+  nicheBreadth_avg.Dist <- estimate_nicheBreadth_avg.Dist(sim.com, env_vars)
+  
+  # Append the results to the result_df
+  cat("Length of sci.name:", length(omi_result$sci.name), "\n")
+  cat("Length of niche_b:", length(niche.breadth), "\n")
+  cat("Length of SimpSSI:", length(SimpSSI), "\n")
+  cat("Length of beta.a:", length(beta.a), "\n")
+  cat("Length of beta.w:", length(beta.w), "\n")
+  cat("Length of om_result:", length(omi_result$om_tol), "\n")
+  cat("Length of nicheRover_hyp_m:", length(nicheRover_hyp_m$nr_hypervolume), "\n")
+  cat("Length of hyp_nb_df:", length(hyp_nb_df$hypervolume), "\n")
+  cat("Length of nicheBreadth_Gam:", length(nicheBreadth_Gam$Niche_Breadth), "\n")
+  cat("Length of nicheBreadth_Gam.latents:", length(nicheBreadth_Gam.latents), "\n")
+  cat("Length of nicheBreadth_avg.Dist:", length(nicheBreadth_avg.Dist), "\n")
+  
+  return(data.frame(iteration = iteration,
+                  sci.name = omi_result$sci.name, 
+                  niche_breadth = niche.breadth, 
+                  SimpSSI = SimpSSI,
+                  beta.a = beta.a, 
+                  beta.w = beta.w, 
+                  om_tol = omi_result$om_tol,
+                  nr_hv = nicheRover_hyp_m$nr_hypervolume,
+                  hv_blond = hyp_nb_df$hypervolume,
+                  nb_Gam = nicheBreadth_Gam$Niche_Breadth,
+                  nb_latent = nicheBreadth_Gam.latents,
+                  nb_dist = nicheBreadth_avg.Dist))
+}
+
+# Combine the results from parallel execution
+result_df <- do.call(rbind, result_df)
+# Combine the results from all iterations using rbindlist
+#result_df <- rbindlist(result_df)
+
+# Stop the parallel backend
+stopCluster(cl)
+
+end <- Sys.time()
+end - start
+
+
+
+
+```
+
+
+```{r}
+
+result_df_gamma <- result_df
+
+#scale the data
+
+result_df[,3:12] <- scale(result_df[,3:12])
+
+
+
+
+```
+
+
+```{r}
+
+#Calculate the correlation between niche_b and all the metrics for every iteration
+
+Sym_correlation_results_list <- list()
+
+# Loop through each metric
+for (col in colnames(result_df)[-c(1, 2)]) {
+  Sym_correlation_results <- data.frame(
+    iteration = 1:n.reps,
+    correlation = rep(NA, n.reps)
+  )
+  
+  # Calculate correlation for each iteration
+  for (i in 1:n.reps) {
+    Sym_correlation <- cor(result_df[result_df$iteration == i, "niche_breadth"],
+                       result_df[result_df$iteration == i, col],
+                       method = "spearman")
+    Sym_correlation_results$correlation[i] <- Sym_correlation
+  }
+  
+  # Store the correlation results in the list
+  Sym_correlation_results_list[[col]] <- Sym_correlation_results
+}
+
+
+#Sym_correlation_results_list <- correlation_results_list
+
+
+
+```
+
+
+
+
+```{r}
+
+# Calculate the mean correlation for each metric
+Sym_mean_correlation_results <- data.frame(
+  metric = character(0),
+  Sym_mean_correlation = double(0)
+)
+
+for (col in names(Sym_correlation_results_list)) {
+  Sym_mean_corr <- mean(Sym_correlation_results_list[[col]]$correlation, na.rm = TRUE)
+  Sym_mean_correlation_results <- rbind(Sym_mean_correlation_results, data.frame(metric = col, Sym_mean_correlation = Sym_mean_corr))
+}
+
+```
+
+
+
+
+```{r}
+
+
+
+Sym_mean_correlation_results
+
+
+```
+
+
+
+#plot the corr- sym
+
+```{r}
+
+
+# Create a list to store the ggplot objects
+plot_list_sym <- list()
+
+# Create a scatter plot for each metric and store it in the plot_list
+for (metric_name in names(Sym_correlation_results_list)) {
+  plot_sym <- ggplot(Sym_correlation_results_list[[metric_name]], aes(x = iteration, y = correlation)) +
+    geom_point() +
+    geom_smooth(method = "loess", se = FALSE) +
+    labs(title = paste("Scatter Plot for", metric_name),
+         x = "Iteration",
+         y = "Correlation") +
+    theme_minimal()
+  
+  plot_list_sym[[metric_name]] <- plot_sym
+}
+
+# Display the plots
+for (i in seq_along(plot_list_sym)) {
+  print(plot_list_sym[[i]])
+}
+
+
+```
+
+
+
+
+
+
+#Using Asymetric Gausian
+
+
+```{r}
+
+
+#Using Asymetric Gausian
+
+# number of cores
+num_cores <- 8
+
+# register parallel backend
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+# define params
+n.reps <- 30  # do 30 iterations.
+n.species <- 30 #number of species
+n.communities <- 500 #number of sites
+
+
+set.seed(9999)
+
+start <- Sys.time()
+
+# Initialize an empty data frame to store results
+result_df_asy <- data.frame(iteration = integer(0), sci.name = character(0), 
+                        niche_breadth = numeric(0),SimpSSI = numeric(0),
+                        beta.a = numeric(0),beta.w = numeric(0),
+                        omi_result = numeric(0),nicheRover_hyp_m = numeric(0),
+                        hyp_nb_df = numeric(0),
+                        nicheBreadth_Gam = numeric(0),
+                        nicheBreadth_Gam.latents = numeric(0),
+                        nicheBreadth_avg.Dist = numeric(0))
+
+# Parallelize the loop using foreach
+result_df_asy <- foreach(iteration = 1:n.reps, .packages=c("pacman", "ade4"), 
+                    .export = c("AllNicheBreadthFunctions_Hmd", "Symmetric_Gaussian_function", 
+                    "AsymetricGaussian_functions", "DavidZelenyThetaFunctions")) %dopar% {
+  
+  # Load required packages
+  pacman::p_load(data.table,ade4,tidyverse,cubelyr,tmap,mapview,exactextractr,lubridate,prism,e1071,ade4,vegan,dplyr,reshape2,ggpmisc,ggplot2,e1071,corrplot,nicheROVER,hypervolume,ggpubr,mFD,ecoCopula)
+
+  # Load custom functions
+   source("AllNBFunctions_single.R")
+   source("Single_Sym_Gau_gamma_Function.R")
+   source("Single_Asy_Gau_gamma_Function.R")
+   source("DavidZelenyThetaFunctions.R")
+
+  print(paste("Iteration:", iteration))
+
+  # Generate the community with new niche_breadth values
+
+  simulated.com <- generate_community.Asymetric.Gaussian.multi.x(n.species=30,n.sites=500,n.x=1,
+                                                           shape = 0.2,rate=0.5)
+  
+  sim.com <- simulated.com$community_abundance_matrix
+  
+  # Transform to presence-absence
+  sim.com[sim.com > 0] <- 1
+  colnames(sim.com) <- paste0("sp", 1:n.species)
+  
+  # Generate niche_breadth values
+  niche.breadth <- simulated.com$breadth.Oracle
+  names(niche.breadth) <- paste0("sp", 1:n.species)
+  #env_vars
+  env_vars <- simulated.com$x
+  colnames(env_vars) <- "env.1"
+  env_vars <- as.data.frame(env_vars)
+  env.1 <- env_vars$env.1
+  #env.2 <- env_vars$env.2
+
+
+
+  # Calculate omi parameters and om_tol
+  SimpSSI <- co_occur(GOSmat, reps = 100, psample = 4, psample2 = 2)$multi.sim
+  beta.a <- co_occur(GOSmat, reps = 100, psample = 4, psample2 = 2)$Beta.a
+  beta.w <- co_occur(GOSmat, reps = 100, psample = 4, psample2 = 2)$Beta.w
+  omi_result <- omi_params_fun(env_vars = env_vars, 
+                               PA = sim.com)
+  nicheRover_hyp_m <- nr_hypervolume_fun(sim.com, env_vars, nsamples = 10)
+  hyp_nb_df <- hypervolume_blond_fun(sim.com, env_vars)
+  nicheBreadth_Gam <- estimate_nicheBreadth_Gam(sim.com, env_vars)
+  nicheBreadth_Gam.latents <- estimate_nicheBreadth_Latents(sim.com, 
+                                                            env_vars,nlv=5)
+  nicheBreadth_avg.Dist <- estimate_nicheBreadth_avg.Dist(sim.com, env_vars)
+  
+  # Append the results to the result_df_asy
+  cat("Length of sci.name:", length(omi_result$sci.name), "\n")
+  cat("Length of niche_b:", length(niche.breadth), "\n")
+  cat("Length of SimpSSI:", length(SimpSSI), "\n")
+  cat("Length of beta.a:", length(beta.a), "\n")
+  cat("Length of beta.w:", length(beta.w), "\n")
+  cat("Length of om_result:", length(omi_result$om_tol), "\n")
+  cat("Length of nicheRover_hyp_m:", length(nicheRover_hyp_m$nr_hypervolume), "\n")
+  cat("Length of hyp_nb_df:", length(hyp_nb_df$hypervolume), "\n")
+  cat("Length of nicheBreadth_Gam:", length(nicheBreadth_Gam$Niche_Breadth), "\n")
+  cat("Length of nicheBreadth_Gam.latents:", length(nicheBreadth_Gam.latents), "\n")
+  cat("Length of nicheBreadth_avg.Dist:", length(nicheBreadth_avg.Dist), "\n")
+  
+
+ # Append the results to the result_df
+  
+  return(data.frame(iteration = iteration,
+                  sci.name = omi_result$sci.name, 
+                  niche_breadth = niche.breadth, 
+                  SimpSSI = SimpSSI,
+                  beta.a = beta.a, 
+                  beta.w = beta.w, 
+                  om_tol = omi_result$om_tol,
+                  nr_hv = nicheRover_hyp_m$nr_hypervolume,
+                  hv_blond = hyp_nb_df$hypervolume,
+                  nb_Gam = nicheBreadth_Gam$Niche_Breadth,
+                  nb_latent = nicheBreadth_Gam.latents,
+                  nb_dist = nicheBreadth_avg.Dist))
+}
+
+# Combine the results from parallel execution
+result_df_asy <- do.call(rbind, result_df_asy)
+
+# Combine the results from all iterations using rbindlist
+#result_df_asy <- rbindlist(result_df_asy)
+
+
+# Stop the parallel backend
+stopCluster(cl)
+
+end <- Sys.time()
+end - start
+
+
+
+
+```
+
+```{r}
+
+#result_df_asy_gamma <- result_df_asy
+
+
+#scale the data
+
+result_df_asy[,3:12] <- scale(result_df_asy[,3:12])
+
+
+
+```
+
+```{r}
+
+
+
+# Calculate the correlation between niche_b and all the metrics for every iteration
+
+# Create an empty list to store correlation results for each metric
+asy_correlation_results_list <- list()
+
+# Loop through each metric
+for (col in colnames(result_df_asy)[-c(1, 2)]) {
+  asy_correlation_results <- data.frame(
+    iteration = 1:n.reps,
+    correlation = rep(NA, n.reps)
+  )
+  
+  # Calculate correlation for each iteration
+  for (i in 1:n.reps) {
+    asy_correlation <- cor(result_df_asy[result_df_asy$iteration == i, "niche_breadth"],
+                       result_df_asy[result_df_asy$iteration == i, col],
+                       method = "spearman")
+    asy_correlation_results$correlation[i] <- asy_correlation
+  }
+  
+  # Store the correlation results in the list
+  asy_correlation_results_list[[col]] <- asy_correlation_results
+}
+
+
+
+```
+
+
+
+
+
+```{r}
+
+
+# Calculate the mean correlation for each metric
+asy_mean_correlation_results <- data.frame(
+  metric = character(0),
+  asy_mean_correlation = double(0)
+)
+
+for (col in names(asy_correlation_results_list)) {
+  asy_mean_corr <- mean(asy_correlation_results_list[[col]]$correlation, na.rm = TRUE)
+  asy_mean_correlation_results <- rbind(asy_mean_correlation_results, data.frame(metric = col, asy_mean_correlation = asy_mean_corr))
+}
+
+#mean_correlation_results
+
+# Loop through and print the correlation results for each metric 
+#for (col in names(correlation_results_list)) {
+#  print(paste("Metric:", col))
+#  print(correlation_results_list[[col]])
+#}
+
+
+
+
+```
+
+
+```{r}
+
+#Asym_mean_correlation_results <- asy_mean_correlation_results
+
+asy_mean_correlation_results
+
+
+```
+
+
+```{r}
+
+#plot the cor.- Asym
+
+
+# Create a list to store the ggplot objects
+plot_list_asy <- list()
+
+# Create a scatter plot for each metric and store it in the plot_list
+for (metric_name in names(asy_correlation_results_list)) {
+  plot_asy <- ggplot(asy_correlation_results_list[[metric_name]], aes(x = iteration, y = correlation)) +
+    geom_point() +
+    geom_smooth(method = "loess", se = FALSE) +
+    labs(title = paste("Scatter Plot for", metric_name),
+         x = "Iteration",
+         y = "Correlation") +
+    theme_minimal()
+  
+  plot_list_asy[[metric_name]] <- plot_asy
+}
+
+# Display the plots
+for (i in seq_along(plot_list_asy)) {
+  print(plot_list_asy[[i]])
+}
+
+
+
+```
+
+
+
+
+#Plot them side by side using Heat Map
+
+```{r}
+
+# Function to create heatmap
+create_heatmap <- function(correlation_list, title, exclude_metric = NULL) {
+  # Reshape data for plotting
+  cor_melted <- do.call(rbind, lapply(seq_along(correlation_list), function(i) {
+    data <- correlation_list[[i]]
+    data$metric <- names(correlation_list)[i]
+    return(data)
+  }))
+  
+  # Exclude niche_breadth
+  if (!is.null(exclude_metric)) {
+    cor_melted <- cor_melted[cor_melted$metric != exclude_metric, ]
+  }
+  
+  
+  # Create heatmap
+  ggplot(cor_melted, aes(x = iteration, y = metric, fill = correlation)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), space = "Lab", name = "Correlation") +
+    theme_minimal() +
+    labs(title = title,
+         x = "Iterations",
+         y = "Metrics") +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+
+
+# Plot symmetric and asymmetric heatmaps side by side
+gridExtra::grid.arrange(
+  create_heatmap(Sym_correlation_results_list, title = "Symmetric", exclude_metric = "niche_breadth"),
+  create_heatmap(asy_correlation_results_list, title = "Asymmetric", exclude_metric = "niche_breadth"),
+  #create_heatmap(correlation_results_list, "Symmetric"),
+  #create_heatmap(correlation_results_list, "Asymmetric"),
+  ncol = 2
+)
+
+
+
+```
+
+
+
+
+
+```{r}
+
+#save.image("single_gamma_model_result_Sept19.RData")
+
+```
+
+
+
